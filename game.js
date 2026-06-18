@@ -34,7 +34,8 @@
         im.src = this.manifest[key];
       }
     },
-    // 非透明ピクセルのバウンディングボックスを計算して格納（一度だけ実行）
+    // 「有色かつ不透明」なピクセルのバウンディングボックスを計算（一度だけ実行）。
+    // 白・近白ピクセル(R>230&&G>230&&B>230)は Gemini の装飾フレームなので除外する。
     _calcBounds(key, img) {
       const W = img.width, H = img.height;
       const oc = document.createElement('canvas');
@@ -42,17 +43,16 @@
       const c = oc.getContext('2d');
       c.drawImage(img, 0, 0);
       const d = c.getImageData(0, 0, W, H).data;
-      const alpha = (x, y) => d[(y * W + x) * 4 + 3];
-      const T = 10; // 透明判定閾値
       let top = H, bottom = 0, left = W, right = 0;
       for (let y = 0; y < H; y++) {
         for (let x = 0; x < W; x++) {
-          if (alpha(x, y) > T) {
-            if (y < top)    top    = y;
-            if (y > bottom) bottom = y;
-            if (x < left)   left   = x;
-            if (x > right)  right  = x;
-          }
+          const i = (y * W + x) * 4;
+          if (d[i + 3] < 20) continue;                          // 透明はスキップ
+          if (d[i] > 230 && d[i+1] > 230 && d[i+2] > 230) continue; // 白フレームはスキップ
+          if (y < top)    top    = y;
+          if (y > bottom) bottom = y;
+          if (x < left)   left   = x;
+          if (x > right)  right  = x;
         }
       }
       this.bounds[key] = top <= bottom ? { top, bottom, left, right } : null;
@@ -607,11 +607,20 @@
     const r = heroR;
     const img = Assets.get('hero_' + heroPose) || Assets.get('hero_idle');
     if (img) {
-      const w = r * 2.8, h = w * (img.height / img.width);
+      const b = Assets.getBounds('hero_' + heroPose) || Assets.getBounds('hero_idle');
+      const diam = r * 2.6; // 描画径（キャラクターの直径相当）
       ctx.save();
-      ctx.translate(cx, feetY - h * 0.5);
+      ctx.translate(cx, feetY);
       if (heroPose === 'fall') ctx.rotate(heroRot);
-      ctx.drawImage(img, -w / 2, -h / 2, w, h);
+      if (b) {
+        // コンテンツ境界のみ描画（透明空間・白アウトラインを正確に配置）
+        const sw = b.right - b.left + 1, sh = b.bottom - b.top + 1;
+        const scale = diam / Math.max(sw, sh);
+        const dw = sw * scale, dh = sh * scale;
+        ctx.drawImage(img, b.left, b.top, sw, sh, -dw / 2, -dh, dw, dh);
+      } else {
+        ctx.drawImage(img, -diam / 2, -diam, diam, diam);
+      }
       ctx.restore();
       return;
     }
