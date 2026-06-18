@@ -468,9 +468,17 @@
     const img = Assets.get('pillar');
     const pillarH = H * 0.55;
     if (img) {
-      // ASSET SWAP: 画像があれば上に合わせて描画（簡易ストレッチ）
-      const ih = w * (img.height / img.width);
-      ctx.drawImage(img, left, topY - ih * 0.18, w, ih);
+      // 画像の上部 30% = 草地キャップ、残り = 本体。
+      // キャップは幅に比例した高さで描き、本体は pillarH まで stretch。
+      const capSrcFrac = 0.30;
+      const capSrcH = img.height * capSrcFrac;
+      const capDstH = Math.round(w * capSrcFrac * 0.9);
+      ctx.drawImage(img,
+        0, capSrcH, img.width, img.height - capSrcH,
+        left, topY + capDstH, w, pillarH - capDstH);
+      ctx.drawImage(img,
+        0, 0, img.width, capSrcH,
+        left, topY, w, capDstH);
       return;
     }
     // --- 図形プレースホルダ ---

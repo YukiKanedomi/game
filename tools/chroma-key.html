@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>Chroma Key Tool — STRETCH assets</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #1a1a2e; color: #eee; font-family: system-ui, sans-serif; padding: 24px; }
+    h1 { font-size: 22px; margin-bottom: 6px; color: #FFCE1F; }
+    .sub { font-size: 13px; color: #aaa; margin-bottom: 24px; }
+
+    /* ファイル名マッピング表 */
+    .map-table { width: 100%; border-collapse: collapse; margin-bottom: 24px; font-size: 13px; }
+    .map-table th { background: #2a2a4a; padding: 8px 12px; text-align: left; }
+    .map-table td { padding: 7px 12px; border-bottom: 1px solid #333; }
+    .map-table tr:hover td { background: #222240; }
+    .fname { font-family: monospace; color: #4FD0B0; }
+
+    /* ドロップゾーン */
+    #dropzone {
+      border: 2px dashed #4FD0B0; border-radius: 12px; padding: 32px;
+      text-align: center; cursor: pointer; margin-bottom: 24px;
+      transition: background 0.15s;
+    }
+    #dropzone.over { background: rgba(79,208,176,0.1); }
+    #dropzone p { font-size: 16px; margin-bottom: 6px; }
+    #dropzone small { color: #888; font-size: 12px; }
+    #file-input { display: none; }
+
+    /* スライダー */
+    .controls { display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 20px; align-items: flex-end; }
+    .ctrl { display: flex; flex-direction: column; gap: 4px; }
+    .ctrl label { font-size: 12px; color: #aaa; }
+    .ctrl input[type=range] { width: 140px; accent-color: #4FD0B0; }
+    .ctrl .val { font-size: 12px; color: #FFCE1F; text-align: right; }
+    button {
+      padding: 10px 22px; border: none; border-radius: 8px; cursor: pointer;
+      font-size: 14px; font-weight: 700;
+    }
+    #proc-btn { background: #4FD0B0; color: #1a1a2e; }
+    #proc-btn:hover { background: #3ab89a; }
+
+    /* プレビュー */
+    #items { display: flex; flex-direction: column; gap: 32px; }
+    .item { background: #22223a; border-radius: 12px; padding: 16px; }
+    .item h3 { font-size: 14px; margin-bottom: 12px; color: #fff; }
+    .previews { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start; }
+    .preview-box { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+    .preview-box span { font-size: 11px; color: #888; }
+    canvas { border-radius: 8px; max-width: 220px; max-height: 220px; object-fit: contain; }
+    .before-canvas { background: #444; }
+    .after-canvas { background: repeating-conic-gradient(#555 0% 25%, #333 0% 50%) 0 0 / 16px 16px; }
+    .dl-row { margin-top: 12px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .dl-row select { background: #333; color: #eee; border: 1px solid #555; padding: 6px 8px; border-radius: 6px; font-size: 13px; }
+    .dl-btn { background: #FF7A4D; color: #fff; padding: 8px 18px; border-radius: 8px; font-size: 13px; font-weight: 700; border: none; cursor: pointer; }
+    .dl-btn:hover { background: #e06030; }
+    .dl-btn:disabled { background: #555; cursor: default; }
+    .status { font-size: 12px; color: #4FD0B0; }
+  </style>
+</head>
+<body>
+  <h1>Chroma Key Tool</h1>
+  <p class="sub">緑背景(#00FF00)のGemini生成画像 → 透過PNG。ゲームの assets/ に保存してください。</p>
+
+  <!-- ファイル名マッピング -->
+  <table class="map-table">
+    <tr><th>ポーズ</th><th>保存ファイル名</th><th>説明</th></tr>
+    <tr><td>待機（idle）</td><td class="fname">hero_idle.png</td><td>立ってるポーズ</td></tr>
+    <tr><td>歩行（walk）</td><td class="fname">hero_walk.png</td><td>歩いているポーズ</td></tr>
+    <tr><td>喜び（cheer）</td><td class="fname">hero_cheer.png</td><td>両腕上げポーズ</td></tr>
+    <tr><td>落下（fall）</td><td class="fname">hero_fall.png</td><td>驚き落下ポーズ</td></tr>
+    <tr><td>柱</td><td class="fname">pillar.png</td><td>コーラルの浮き足場</td></tr>
+    <tr><td>マーカー</td><td class="fname">marker.png</td><td>パーフェクトゾーン印</td></tr>
+  </table>
+
+  <!-- ドロップゾーン -->
+  <div id="dropzone">
+    <p>画像をここにドロップ（複数OK）</p>
+    <small>またはクリックしてファイルを選択</small>
+    <input type="file" id="file-input" accept="image/*" multiple>
+  </div>
+
+  <!-- パラメータ -->
+  <div class="controls">
+    <div class="ctrl">
+      <label>緑 Hue 最小 (°)</label>
+      <input type="range" id="hMin" min="60" max="110" value="85" step="1">
+      <div class="val" id="hMinV">85°</div>
+    </div>
+    <div class="ctrl">
+      <label>緑 Hue 最大 (°)</label>
+      <input type="range" id="hMax" min="120" max="165" value="150" step="1">
+      <div class="val" id="hMaxV">150°</div>
+    </div>
+    <div class="ctrl">
+      <label>彩度 最小</label>
+      <input type="range" id="sMin" min="0.1" max="0.8" value="0.35" step="0.01">
+      <div class="val" id="sMinV">0.35</div>
+    </div>
+    <div class="ctrl">
+      <label>Despill 強度</label>
+      <input type="range" id="despill" min="0" max="1" value="0.6" step="0.05">
+      <div class="val" id="despillV">0.60</div>
+    </div>
+    <button id="proc-btn">全て再処理</button>
+  </div>
+
+  <div id="items"></div>
+
+  <script>
+    const dropzone = document.getElementById('dropzone');
+    const fileInput = document.getElementById('file-input');
+    const itemsEl = document.getElementById('items');
+
+    // スライダー表示
+    function bindSlider(id, valId, fmt) {
+      const el = document.getElementById(id);
+      const val = document.getElementById(valId);
+      el.addEventListener('input', () => { val.textContent = fmt(el.value); });
+    }
+    bindSlider('hMin', 'hMinV', v => v + '°');
+    bindSlider('hMax', 'hMaxV', v => v + '°');
+    bindSlider('sMin', 'sMinV', v => parseFloat(v).toFixed(2));
+    bindSlider('despill', 'despillV', v => parseFloat(v).toFixed(2));
+
+    // ドロップ
+    dropzone.addEventListener('click', () => fileInput.click());
+    dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('over'); });
+    dropzone.addEventListener('dragleave', () => dropzone.classList.remove('over'));
+    dropzone.addEventListener('drop', e => { e.preventDefault(); dropzone.classList.remove('over'); handleFiles(e.dataTransfer.files); });
+    fileInput.addEventListener('change', () => handleFiles(fileInput.files));
+
+    document.getElementById('proc-btn').addEventListener('click', () => {
+      document.querySelectorAll('.item').forEach(el => processItem(el));
+    });
+
+    // 名前候補（ファイル名に含まれるキーワードで自動選択）
+    const NAME_OPTIONS = [
+      { value: 'hero_idle',  label: 'hero_idle.png',  keys: ['idle', 'stand', 'wait', '待機'] },
+      { value: 'hero_walk',  label: 'hero_walk.png',  keys: ['walk', 'run', '歩', 'walking'] },
+      { value: 'hero_cheer', label: 'hero_cheer.png', keys: ['cheer', 'happy', 'joy', '喜', 'cheer'] },
+      { value: 'hero_fall',  label: 'hero_fall.png',  keys: ['fall', 'drop', '落', 'scared', 'fall'] },
+      { value: 'pillar',     label: 'pillar.png',     keys: ['pillar', 'platform', '柱', '足場'] },
+      { value: 'marker',     label: 'marker.png',     keys: ['marker', 'diamond', 'target', 'マーカー'] },
+    ];
+    function guessSaveName(filename) {
+      const lower = filename.toLowerCase();
+      for (const opt of NAME_OPTIONS) {
+        if (opt.keys.some(k => lower.includes(k))) return opt.value;
+      }
+      return '';
+    }
+
+    const items = []; // {file, origImg, origCanvas, resultCanvas, select}
+
+    function handleFiles(files) {
+      for (const file of files) {
+        const img = new Image();
+        const url = URL.createObjectURL(file);
+        img.onload = () => {
+          addItem(file, img);
+          URL.revokeObjectURL(url);
+        };
+        img.src = url;
+      }
+    }
+
+    function addItem(file, img) {
+      const item = { file, img, processed: null };
+
+      const div = document.createElement('div');
+      div.className = 'item';
+
+      const h3 = document.createElement('h3');
+      h3.textContent = file.name + ` (${img.width}×${img.height})`;
+      div.appendChild(h3);
+
+      const previews = document.createElement('div');
+      previews.className = 'previews';
+
+      // 元画像
+      const beforeBox = document.createElement('div');
+      beforeBox.className = 'preview-box';
+      const beforeCanvas = document.createElement('canvas');
+      beforeCanvas.className = 'before-canvas';
+      const afterCanvas = document.createElement('canvas');
+      afterCanvas.className = 'after-canvas';
+      drawOriginal(beforeCanvas, img);
+      beforeBox.append(beforeCanvas, span('処理前'));
+      const afterBox = document.createElement('div');
+      afterBox.className = 'preview-box';
+      afterBox.append(afterCanvas, span('処理後（透過）'));
+      previews.append(beforeBox, afterBox);
+      div.appendChild(previews);
+
+      // DLコントロール
+      const dlRow = document.createElement('div');
+      dlRow.className = 'dl-row';
+      const sel = document.createElement('select');
+      sel.innerHTML = '<option value="">保存名を選択…</option>' +
+        NAME_OPTIONS.map(o => `<option value="${o.value}">${o.label}</option>`).join('');
+      const guess = guessSaveName(file.name);
+      if (guess) sel.value = guess;
+      const dlBtn = document.createElement('button');
+      dlBtn.className = 'dl-btn';
+      dlBtn.textContent = 'PNGダウンロード';
+      dlBtn.disabled = true;
+      const statusEl = document.createElement('span');
+      statusEl.className = 'status';
+      dlRow.append(sel, dlBtn, statusEl);
+      div.appendChild(dlRow);
+      itemsEl.appendChild(div);
+
+      const entry = { file, img, beforeCanvas, afterCanvas, sel, dlBtn, statusEl };
+      items.push(entry);
+      div._entry = entry;
+      processItem(div);
+    }
+
+    function span(text) {
+      const s = document.createElement('span'); s.textContent = text; return s;
+    }
+
+    function drawOriginal(canvas, img) {
+      const MAX = 220;
+      const scale = Math.min(MAX / img.width, MAX / img.height);
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+    }
+
+    function processItem(div) {
+      const entry = div._entry;
+      if (!entry) return;
+      const { img, afterCanvas, dlBtn, statusEl } = entry;
+
+      const hMin = +document.getElementById('hMin').value;
+      const hMax = +document.getElementById('hMax').value;
+      const sMin = +document.getElementById('sMin').value;
+      const despill = +document.getElementById('despill').value;
+
+      // フルサイズで処理
+      const fullCanvas = document.createElement('canvas');
+      fullCanvas.width = img.width;
+      fullCanvas.height = img.height;
+      const fc = fullCanvas.getContext('2d');
+      fc.drawImage(img, 0, 0);
+      const imgData = fc.getImageData(0, 0, img.width, img.height);
+      chromaKey(imgData, hMin, hMax, sMin, despill);
+      fc.putImageData(imgData, 0, 0);
+
+      // プレビュー縮小
+      const MAX = 220;
+      const scale = Math.min(MAX / img.width, MAX / img.height);
+      afterCanvas.width = Math.round(img.width * scale);
+      afterCanvas.height = Math.round(img.height * scale);
+      afterCanvas.getContext('2d').drawImage(fullCanvas, 0, 0, afterCanvas.width, afterCanvas.height);
+
+      entry.resultCanvas = fullCanvas;
+      dlBtn.disabled = false;
+      statusEl.textContent = '処理済み ✓';
+
+      dlBtn.onclick = () => {
+        const name = entry.sel.value || entry.file.name.replace(/\.[^.]+$/, '') + '_keyed';
+        fullCanvas.toBlob(blob => {
+          const a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = name + '.png';
+          a.click();
+          statusEl.textContent = `保存: ${name}.png ✓ → assets/ に移動してください`;
+        }, 'image/png');
+      };
+    }
+
+    // ============================================================
+    // クロマキーアルゴリズム（HSV基準 + despill）
+    // ============================================================
+    function rgbToHsv(r, g, b) {
+      r /= 255; g /= 255; b /= 255;
+      const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+      let h = 0;
+      if (d !== 0) {
+        switch (max) {
+          case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break;
+          case g: h = ((b - r) / d + 2) / 6; break;
+          case b: h = ((r - g) / d + 4) / 6; break;
+        }
+      }
+      return [h * 360, max === 0 ? 0 : d / max, max];
+    }
+
+    function chromaKey(imgData, hMin, hMax, sMin, despillStr) {
+      const d = imgData.data, n = d.length;
+      const despill = parseFloat(despillStr);
+
+      // Pass 1: 緑判定 → α=0
+      for (let i = 0; i < n; i += 4) {
+        if (d[i + 3] === 0) continue;
+        const [h, s, v] = rgbToHsv(d[i], d[i + 1], d[i + 2]);
+        if (h >= hMin && h <= hMax && s >= sMin && v > 0.15) {
+          d[i + 3] = 0;
+        }
+      }
+
+      // Pass 2: 緑スピル（色かぶり）を除去
+      if (despill > 0) {
+        for (let i = 0; i < n; i += 4) {
+          if (d[i + 3] === 0) continue;
+          const r = d[i], g = d[i + 1], b = d[i + 2];
+          const maxRB = Math.max(r, b);
+          if (g > maxRB) {
+            d[i + 1] = Math.round(g - (g - maxRB) * despill);
+          }
+        }
+      }
+    }
+  </script>
+</body>
+</html>
