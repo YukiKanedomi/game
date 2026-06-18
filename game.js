@@ -17,6 +17,7 @@
   // ============================================================
   const Assets = {
     imgs: {},
+    bounds: {}, // 各画像の非透明ピクセルの実コンテンツ境界（ロード後に自動計算）
     manifest: {
       hero_idle: 'assets/hero_idle.png',
       hero_walk: 'assets/hero_walk.png',
@@ -28,12 +29,36 @@
     load() {
       for (const key in this.manifest) {
         const im = new Image();
-        im.onload = () => { this.imgs[key] = im; };
-        im.onerror = () => { /* 無ければ図形描画にフォールバック */ };
+        im.onload = () => { this.imgs[key] = im; this._calcBounds(key, im); };
+        im.onerror = () => {};
         im.src = this.manifest[key];
       }
     },
-    get(key) { return this.imgs[key] || null; },
+    // 非透明ピクセルのバウンディングボックスを計算して格納（一度だけ実行）
+    _calcBounds(key, img) {
+      const W = img.width, H = img.height;
+      const oc = document.createElement('canvas');
+      oc.width = W; oc.height = H;
+      const c = oc.getContext('2d');
+      c.drawImage(img, 0, 0);
+      const d = c.getImageData(0, 0, W, H).data;
+      const alpha = (x, y) => d[(y * W + x) * 4 + 3];
+      const T = 10; // 透明判定閾値
+      let top = H, bottom = 0, left = W, right = 0;
+      for (let y = 0; y < H; y++) {
+        for (let x = 0; x < W; x++) {
+          if (alpha(x, y) > T) {
+            if (y < top)    top    = y;
+            if (y > bottom) bottom = y;
+            if (x < left)   left   = x;
+            if (x > right)  right  = x;
+          }
+        }
+      }
+      this.bounds[key] = top <= bottom ? { top, bottom, left, right } : null;
+    },
+    get(key)       { return this.imgs[key]   || null; },
+    getBounds(key) { return this.bounds[key] || null; },
   };
   Assets.load();
 
@@ -468,21 +493,22 @@
     const img = Assets.get('pillar');
     const pillarH = H * 0.55;
     if (img) {
-      // Gemini出力に白い装飾フレームが含まれるため外周3.5%をクロップして除去
-      const bp = 0.035;
-      const sx = img.width  * bp;
-      const sy = img.height * bp;
-      const sw = img.width  * (1 - bp * 2);
-      const sh = img.height * (1 - bp * 2);
-      // クロップ後の上部 28% = 草地キャップ
-      const capSrcH = sh * 0.28;
-      const capDstH = Math.round(w * 0.24);
-      // 本体（キャップ以下を pillarH まで stretch）
-      ctx.drawImage(img, sx, sy + capSrcH, sw, sh - capSrcH,
-                    left, topY + capDstH, w, pillarH - capDstH);
-      // キャップ（上に重ねる）
-      ctx.drawImage(img, sx, sy, sw, capSrcH,
-                    left, topY, w, capDstH);
+      const b = Assets.getBounds('pillar');
+      if (b) {
+        // 実コンテンツ境界のみ使用（透明空間・白フレームを完全排除）
+        const sw = b.right  - b.left + 1;
+        const sh = b.bottom - b.top  + 1;
+        // コンテンツ内の上部 30% = 草地キャップ、残り = 柱本体
+        const capSrcH = sh * 0.30;
+        const capDstH = Math.max(14, Math.round(w * 0.22));
+        ctx.drawImage(img, b.left, b.top + capSrcH, sw, sh - capSrcH,
+                      left, topY + capDstH, w, pillarH - capDstH);
+        ctx.drawImage(img, b.left, b.top, sw, capSrcH,
+                      left, topY, w, capDstH);
+      } else {
+        // bounds 未計算なら全体を stretch（初期フレーム用フォールバック）
+        ctx.drawImage(img, left, topY, w, pillarH);
+      }
       return;
     }
     // --- 図形プレースホルダ ---
@@ -528,12 +554,15 @@
     const img = Assets.get('marker');
     const s = perfectHalf * 1.6;
     if (img) {
-      // 白フレームをクロップして除去。表示サイズは足場幅の 55% 相当まで拡大
-      const bp = 0.035;
-      const sx = img.width  * bp, sy = img.height * bp;
-      const sw = img.width  * (1 - bp * 2), sh = img.height * (1 - bp * 2);
-      const ms = Math.max(perfectHalf * 4, W * 0.065); // 視認できる最小サイズ
-      ctx.drawImage(img, sx, sy, sw, sh, cx - ms, topY - ms * 2, ms * 2, ms * 2);
+      const b = Assets.getBounds('marker');
+      const ms = Math.max(perfectHalf * 5, W * 0.08);
+      if (b) {
+        const sw = b.right  - b.left + 1;
+        const sh = b.bottom - b.top  + 1;
+        ctx.drawImage(img, b.left, b.top, sw, sh, cx - ms, topY - ms * 2.2, ms * 2, ms * 2);
+      } else {
+        ctx.drawImage(img, cx - ms, topY - ms * 2.2, ms * 2, ms * 2);
+      }
       return;
     }
     const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 200);
