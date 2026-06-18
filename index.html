@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#7FB4E6">
+  <title>STRETCH</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <canvas id="game"></canvas>
+
+    <!-- プレイ中のHUD（文字はすべてDOMでコード描画：仕様§1-5/§11） -->
+    <div id="hud" class="hidden">
+      <div id="score">0</div>
+      <div id="best">BEST 0</div>
+      <div id="combo" class="hidden">COMBO ×2</div>
+    </div>
+
+    <!-- 音ON/OFF -->
+    <button id="mute" aria-label="サウンド切替">🔊</button>
+
+    <!-- 本編内チュートリアル（仕様§4：初回のみ・成功で消える） -->
+    <div id="tutorial" class="hidden">
+      <div class="tut-line">画面を<b>押している間</b>のびる</div>
+      <div class="tut-line">指を<b>はなす</b>とたおれて橋になる</div>
+    </div>
+
+    <!-- タイトル（仕様§4：タップ1回で開始） -->
+    <div id="title" class="overlay">
+      <div class="logo">STRETCH</div>
+      <div class="sub">のびる棒で となりの足場へ</div>
+      <div class="best-title">BEST <span id="best-title-val">0</span></div>
+      <div class="tap">タップでスタート</div>
+    </div>
+
+    <!-- 結果（仕様§2：タップで即リトライ） -->
+    <div id="gameover" class="overlay hidden">
+      <div class="result-label">SCORE</div>
+      <div id="result-score">0</div>
+      <div id="newbest" class="hidden">🎉 自己ベスト更新！</div>
+      <div class="result-best">BEST <span id="result-best-val">0</span></div>
+      <div class="tap">タップでもう一度</div>
+    </div>
+  </div>
+
+  <script src="audio.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>

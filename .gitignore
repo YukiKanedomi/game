@@ -1,0 +1,16 @@
+# OS / editor
+Thumbs.db
+Desktop.ini
+.DS_Store
+*.swp
+.vscode/
+
+# 一時ファイル
+*.tmp
+*.log
+
+# 第三者著作物（公開しない）
+参考画像/
+
+# ローカル個人設定
+.claude/
