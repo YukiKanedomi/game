@@ -102,6 +102,11 @@
       <input type="range" id="despill" min="0" max="1" value="0.6" step="0.05">
       <div class="val" id="despillV">0.60</div>
     </div>
+    <div class="ctrl">
+      <label>白フレーム除去 (%)</label>
+      <input type="range" id="borderTrim" min="0" max="8" value="3.5" step="0.5">
+      <div class="val" id="borderTrimV">3.5%</div>
+    </div>
     <button id="proc-btn">全て再処理</button>
   </div>
 
@@ -122,6 +127,7 @@
     bindSlider('hMax', 'hMaxV', v => v + '°');
     bindSlider('sMin', 'sMinV', v => parseFloat(v).toFixed(2));
     bindSlider('despill', 'despillV', v => parseFloat(v).toFixed(2));
+    bindSlider('borderTrim', 'borderTrimV', v => parseFloat(v).toFixed(1) + '%');
 
     // ドロップ
     dropzone.addEventListener('click', () => fileInput.click());
@@ -238,6 +244,7 @@
       const hMax = +document.getElementById('hMax').value;
       const sMin = +document.getElementById('sMin').value;
       const despill = +document.getElementById('despill').value;
+      const borderTrim = +document.getElementById('borderTrim').value / 100;
 
       // フルサイズで処理
       const fullCanvas = document.createElement('canvas');
@@ -246,6 +253,7 @@
       const fc = fullCanvas.getContext('2d');
       fc.drawImage(img, 0, 0);
       const imgData = fc.getImageData(0, 0, img.width, img.height);
+      if (borderTrim > 0) clearBorder(imgData, borderTrim); // 白フレーム除去
       chromaKey(imgData, hMin, hMax, sMin, despill);
       fc.putImageData(imgData, 0, 0);
 
@@ -287,6 +295,19 @@
         }
       }
       return [h * 360, max === 0 ? 0 : d / max, max];
+    }
+
+    // 外周 pct 割合のピクセルを透明化（Geminiの白フレーム除去）
+    function clearBorder(imgData, pct) {
+      const W = imgData.width, H = imgData.height, d = imgData.data;
+      const bx = Math.ceil(W * pct), by = Math.ceil(H * pct);
+      for (let y = 0; y < H; y++) {
+        for (let x = 0; x < W; x++) {
+          if (x < bx || x >= W - bx || y < by || y >= H - by) {
+            d[(y * W + x) * 4 + 3] = 0;
+          }
+        }
+      }
     }
 
     function chromaKey(imgData, hMin, hMax, sMin, despillStr) {

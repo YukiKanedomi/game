@@ -468,17 +468,21 @@
     const img = Assets.get('pillar');
     const pillarH = H * 0.55;
     if (img) {
-      // 画像の上部 30% = 草地キャップ、残り = 本体。
-      // キャップは幅に比例した高さで描き、本体は pillarH まで stretch。
-      const capSrcFrac = 0.30;
-      const capSrcH = img.height * capSrcFrac;
-      const capDstH = Math.round(w * capSrcFrac * 0.9);
-      ctx.drawImage(img,
-        0, capSrcH, img.width, img.height - capSrcH,
-        left, topY + capDstH, w, pillarH - capDstH);
-      ctx.drawImage(img,
-        0, 0, img.width, capSrcH,
-        left, topY, w, capDstH);
+      // Gemini出力に白い装飾フレームが含まれるため外周3.5%をクロップして除去
+      const bp = 0.035;
+      const sx = img.width  * bp;
+      const sy = img.height * bp;
+      const sw = img.width  * (1 - bp * 2);
+      const sh = img.height * (1 - bp * 2);
+      // クロップ後の上部 28% = 草地キャップ
+      const capSrcH = sh * 0.28;
+      const capDstH = Math.round(w * 0.24);
+      // 本体（キャップ以下を pillarH まで stretch）
+      ctx.drawImage(img, sx, sy + capSrcH, sw, sh - capSrcH,
+                    left, topY + capDstH, w, pillarH - capDstH);
+      // キャップ（上に重ねる）
+      ctx.drawImage(img, sx, sy, sw, capSrcH,
+                    left, topY, w, capDstH);
       return;
     }
     // --- 図形プレースホルダ ---
@@ -523,7 +527,15 @@
   function drawMarker(cx) {
     const img = Assets.get('marker');
     const s = perfectHalf * 1.6;
-    if (img) { ctx.drawImage(img, cx - s, topY - s * 2.2, s * 2, s * 2); return; }
+    if (img) {
+      // 白フレームをクロップして除去。表示サイズは足場幅の 55% 相当まで拡大
+      const bp = 0.035;
+      const sx = img.width  * bp, sy = img.height * bp;
+      const sw = img.width  * (1 - bp * 2), sh = img.height * (1 - bp * 2);
+      const ms = Math.max(perfectHalf * 4, W * 0.065); // 視認できる最小サイズ
+      ctx.drawImage(img, sx, sy, sw, sh, cx - ms, topY - ms * 2, ms * 2, ms * 2);
+      return;
+    }
     const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 200);
     ctx.save();
     ctx.translate(cx, topY - s * 0.4);
