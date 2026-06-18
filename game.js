@@ -34,28 +34,32 @@
         im.src = this.manifest[key];
       }
     },
-    // 「有色かつ不透明」なピクセルのバウンディングボックスを計算（一度だけ実行）。
-    // 白・近白ピクセル(R>230&&G>230&&B>230)は Gemini の装飾フレームなので除外する。
+    // 中央列/行だけ走査して O(W+H) で境界を検出（フルスキャンより高速）。
+    // try-catch で CORS taint エラー（file://開きなど）を吸収。
+    // 透明ピクセルと白/近白ピクセル（Gemini装飾フレーム）は除外。
     _calcBounds(key, img) {
-      const W = img.width, H = img.height;
-      const oc = document.createElement('canvas');
-      oc.width = W; oc.height = H;
-      const c = oc.getContext('2d');
-      c.drawImage(img, 0, 0);
-      const d = c.getImageData(0, 0, W, H).data;
-      let top = H, bottom = 0, left = W, right = 0;
-      for (let y = 0; y < H; y++) {
-        for (let x = 0; x < W; x++) {
+      try {
+        const W = img.width, H = img.height;
+        const oc = document.createElement('canvas');
+        oc.width = W; oc.height = H;
+        const c = oc.getContext('2d');
+        c.drawImage(img, 0, 0);
+        const d = c.getImageData(0, 0, W, H).data;
+        const ok = (x, y) => {
           const i = (y * W + x) * 4;
-          if (d[i + 3] < 20) continue;                          // 透明はスキップ
-          if (d[i] > 230 && d[i+1] > 230 && d[i+2] > 230) continue; // 白フレームはスキップ
-          if (y < top)    top    = y;
-          if (y > bottom) bottom = y;
-          if (x < left)   left   = x;
-          if (x > right)  right  = x;
-        }
+          return d[i+3] >= 20 && !(d[i] > 230 && d[i+1] > 230 && d[i+2] > 230);
+        };
+        const mx = W >> 1, my = H >> 1;
+        let top = -1, bottom = -1, left = -1, right = -1;
+        for (let y = 0;   y < H  && top    < 0; y++) if (ok(mx, y)) top    = y;
+        for (let y = H-1; y >= 0 && bottom < 0; y--) if (ok(mx, y)) bottom = y;
+        for (let x = 0;   x < W  && left   < 0; x++) if (ok(x, my)) left   = x;
+        for (let x = W-1; x >= 0 && right  < 0; x--) if (ok(x, my)) right  = x;
+        this.bounds[key] = (top >= 0 && bottom > top && left >= 0 && right > left)
+          ? { top, bottom, left, right } : null;
+      } catch (e) {
+        this.bounds[key] = null; // CORS taint 等 → キャンバス描画にフォールバック
       }
-      this.bounds[key] = top <= bottom ? { top, bottom, left, right } : null;
     },
     get(key)       { return this.imgs[key]   || null; },
     getBounds(key) { return this.bounds[key] || null; },
@@ -492,25 +496,21 @@
   function drawPillar(left, w) {
     const img = Assets.get('pillar');
     const pillarH = H * 0.55;
-    if (img) {
-      const b = Assets.getBounds('pillar');
-      if (b) {
-        // 実コンテンツ境界のみ使用（透明空間・白フレームを完全排除）
-        const sw = b.right  - b.left + 1;
-        const sh = b.bottom - b.top  + 1;
-        // コンテンツ内の上部 30% = 草地キャップ、残り = 柱本体
-        const capSrcH = sh * 0.30;
-        const capDstH = Math.max(14, Math.round(w * 0.22));
-        ctx.drawImage(img, b.left, b.top + capSrcH, sw, sh - capSrcH,
-                      left, topY + capDstH, w, pillarH - capDstH);
-        ctx.drawImage(img, b.left, b.top, sw, capSrcH,
-                      left, topY, w, capDstH);
-      } else {
-        // bounds 未計算なら全体を stretch（初期フレーム用フォールバック）
-        ctx.drawImage(img, left, topY, w, pillarH);
-      }
+    const pb = Assets.getBounds('pillar');
+    if (img && pb) {
+      // 実コンテンツ境界のみ使用（透明空間・白フレームを完全排除）
+      const sw = pb.right  - pb.left + 1;
+      const sh = pb.bottom - pb.top  + 1;
+      // コンテンツ上部 30% = 草地キャップ、残り = 柱本体
+      const capSrcH = sh * 0.30;
+      const capDstH = Math.max(14, Math.round(w * 0.22));
+      ctx.drawImage(img, pb.left, pb.top + capSrcH, sw, sh - capSrcH,
+                    left, topY + capDstH, w, pillarH - capDstH);
+      ctx.drawImage(img, pb.left, pb.top, sw, capSrcH,
+                    left, topY, w, capDstH);
       return;
     }
+    // bounds 未取得（CORS taint 等）またはアセット未配置 → キャンバス描画
     // --- 図形プレースホルダ ---
     const grassH = Math.max(8, w * 0.16);
     // 本体（コーラル、下は丸く）
@@ -553,18 +553,16 @@
   function drawMarker(cx) {
     const img = Assets.get('marker');
     const s = perfectHalf * 1.6;
-    if (img) {
-      const b = Assets.getBounds('marker');
+    const mb = Assets.getBounds('marker');
+    if (Assets.get('marker') && mb) {
+      const sw = mb.right  - mb.left + 1;
+      const sh = mb.bottom - mb.top  + 1;
       const ms = Math.max(perfectHalf * 5, W * 0.08);
-      if (b) {
-        const sw = b.right  - b.left + 1;
-        const sh = b.bottom - b.top  + 1;
-        ctx.drawImage(img, b.left, b.top, sw, sh, cx - ms, topY - ms * 2.2, ms * 2, ms * 2);
-      } else {
-        ctx.drawImage(img, cx - ms, topY - ms * 2.2, ms * 2, ms * 2);
-      }
+      ctx.drawImage(Assets.get('marker'), mb.left, mb.top, sw, sh,
+                    cx - ms, topY - ms * 2.2, ms * 2, ms * 2);
       return;
     }
+    // bounds 未取得またはアセット未配置 → キャンバス描画
     const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 200);
     ctx.save();
     ctx.translate(cx, topY - s * 0.4);
@@ -607,20 +605,12 @@
     const r = heroR;
     const img = Assets.get('hero_' + heroPose) || Assets.get('hero_idle');
     if (img) {
-      const b = Assets.getBounds('hero_' + heroPose) || Assets.getBounds('hero_idle');
-      const diam = r * 2.6; // 描画径（キャラクターの直径相当）
+      // 画像全体を r*2.8 の正方形に収める（透明角は問題なし）
+      const sz = r * 2.8;
       ctx.save();
-      ctx.translate(cx, feetY);
+      ctx.translate(cx, feetY - sz * 0.5);
       if (heroPose === 'fall') ctx.rotate(heroRot);
-      if (b) {
-        // コンテンツ境界のみ描画（透明空間・白アウトラインを正確に配置）
-        const sw = b.right - b.left + 1, sh = b.bottom - b.top + 1;
-        const scale = diam / Math.max(sw, sh);
-        const dw = sw * scale, dh = sh * scale;
-        ctx.drawImage(img, b.left, b.top, sw, sh, -dw / 2, -dh, dw, dh);
-      } else {
-        ctx.drawImage(img, -diam / 2, -diam, diam, diam);
-      }
+      ctx.drawImage(img, -sz / 2, -sz / 2, sz, sz);
       ctx.restore();
       return;
     }
